@@ -196,6 +196,7 @@ def get_metadata_from_hashfile(
     identifier_filter: typing.Optional[typing.List[str]] = None,
     file_filters: typing.Optional[typing.List[str]] = None,
     invert_file_filtering: bool = False,
+    file_filters_exclude: typing.Optional[typing.List[str]] = None,
 ) -> typing.Dict[str, str]:
     """Return dict of file paths and associated metadata parsed from IA hash metadata CSV"""
     results = {}  # type: typing.Dict[str, str]
@@ -210,6 +211,9 @@ def get_metadata_from_hashfile(
                         continue
                 else:
                     if any(substring.lower() in file_path.lower() for substring in file_filters):
+                        continue
+            if file_filters_exclude is not None:
+                if any(substring.lower() in file_path.lower() for substring in file_filters_exclude):
                         continue
             if identifier_filter is None or identifier in identifier_filter:
                 if hash_flag:
@@ -910,6 +914,7 @@ def download(
     verify_flag: bool,
     split_count: int,
     file_filters: typing.Optional[typing.List[str]],
+    file_filters_exclude: typing.Optional[typing.List[str]],
     invert_file_filtering: bool,
     cache_parent_folder: str,
     cache_refresh: bool,
@@ -1077,6 +1082,13 @@ def download(
                 else:
                     if any(substring.lower() in file["name"].lower() for substring in file_filters):
                         continue
+            if file_filters_exclude is not None:
+                print("here")
+                print(f"{file['name']}")
+                print(f"{file_filters_exclude}")
+                if any(substring.lower() in file["name"].lower() for substring in file_filters_exclude):
+                    print("match")
+                    continue
             if file["size"] != -1:
                 item_filtered_files_size += int(file["size"])
             if hash_file is not None:
@@ -1117,6 +1129,7 @@ def download(
                 identifiers=[identifier],
                 file_filters=file_filters,
                 invert_file_filtering=invert_file_filtering,
+                file_filters_exclude=file_filters_exclude,
                 quiet=True,
             )
             if size_verification:
@@ -1164,6 +1177,19 @@ def download(
                         " will be performed".format(" ".join(file_filters), identifier)
                     )
                     return
+        if file_filters_exclude is not None:
+            if len(download_queue) > 0:
+                log.info(
+                    "{} files ({}) didn't match file filter(s) exclue '{}' (case insensitive) and will be"
+                    " downloaded (out of a total of {} files ({}) available)".format(
+                        len(download_queue),
+                        bytes_filesize_to_readable_str(item_filtered_files_size),
+                        " ".join(file_filters_exclude),
+                        item_file_count,
+                        bytes_filesize_to_readable_str(item_total_size),
+                    )
+                )
+                log.info("{}".format(download_queue))
         else:
             log.info(
                 "'{}' contains {} files ({})".format(
@@ -1200,6 +1226,7 @@ def download(
             identifiers=[identifier],
             file_filters=file_filters,
             invert_file_filtering=invert_file_filtering,
+            file_filters_exclude=file_filters_exclude,
         )
 
     else:
@@ -1222,6 +1249,7 @@ def verify(
     identifiers: typing.Optional[typing.List[str]] = None,
     file_filters: typing.Optional[typing.List[str]] = None,
     invert_file_filtering: bool = False,
+    file_filters_exclude: typing.Optional[typing.List[str]] = None,
     quiet: bool = False,
 ) -> bool:
     """Verify that previously-downloaded files are complete"""
@@ -1245,7 +1273,7 @@ def verify(
         if hash_file is not None:
             try:
                 hashfile_metadata = get_metadata_from_hashfile(
-                    hash_file, hash_flag, identifiers, file_filters, invert_file_filtering
+                    hash_file, hash_flag, identifiers, file_filters, invert_file_filtering, file_filters_exclude
                 )
             except ValueError:
                 log.error(
@@ -1292,6 +1320,7 @@ def verify(
                                     identifiers,
                                     file_filters,
                                     invert_file_filtering,
+                                    file_filters_exclude,
                                 )
                             )
                         except ValueError:
@@ -1710,6 +1739,18 @@ def main() -> None:
         ),
     )
     download_parser.add_argument(
+        "-e",
+        "--filefiltersexclude",
+        type=str,
+        nargs="+",
+        help=(
+            "One or more (space separated) file name filters; only files that do not contain any of the"
+            " provided filter strings (case insensitive) will be downloaded. If multiple filters"
+            " are provided, the search will be an 'OR' (i.e. only one of the provided strings needs"
+            " to hit)"
+        ),
+    )
+    download_parser.add_argument(
         "-c",
         "--credentials",
         type=str,
@@ -1779,6 +1820,18 @@ def main() -> None:
         help=(
             "Invert file filtering logic so that only files NOT matching filefilters will be"
             " verified"
+        ),
+    )
+    verify_parser.add_argument(
+        "-e",
+        "--filefiltersexclude",
+        type=str,
+        nargs="+",
+        help=(
+            "One or more (space separated) file name filters; only files that do not contain any of the"
+            " provided filter strings (case insensitive) will be downloaded. If multiple filters"
+            " are provided, the search will be an 'OR' (i.e. only one of the provided strings needs"
+            " to hit)"
         ),
     )
     verify_parser.add_argument(
@@ -1871,6 +1924,7 @@ def main() -> None:
                     split_count=args.split,
                     file_filters=args.filefilters,
                     invert_file_filtering=args.invertfilefiltering,
+                    file_filters_exclude=args.filefiltersexclude,
                     cache_parent_folder=os.path.join(args.logfolder, log_subfolders[1]),
                     cache_refresh=args.cacherefresh,
                 )
@@ -1888,6 +1942,7 @@ def main() -> None:
                 identifiers=args.identifiers,
                 file_filters=args.filefilters,
                 invert_file_filtering=args.invertfilefiltering,
+                file_filters_exclude=args.filefiltersexclude,
             )
 
         if counter_handler.count["WARNING"] > 0 or counter_handler.count["ERROR"] > 0:
